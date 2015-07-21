@@ -1,0 +1,22 @@
+useDynLib(sparsereg)
+exportPattern("^[[:alpha:]]+")
+importFrom(Rcpp, evalCpp)
+importFrom(VGAM, rinv.gaussian)
+importFrom(coda, autocorr, HPDinterval, as.mcmc)
+importFrom(msm, rtnorm)
+importFrom(MCMCpack, rinvgamma)
+importFrom(glmnet, glmnet, cv.glmnet)
+importFrom(MASS, mvrnorm)
+importFrom(gridExtra, grid.arrange)
+importFrom(grid,unit.pmax)
+importFrom(ggplot2, ggplot_gtable, ggplot, geom_errorbar, aes, coord_flip,
+ylab,theme, geom_point, ylim, element_blank, ggtitle, ggplot_build, geom_density,
+stat_density,facet_grid, xlab, xlim)
+importFrom("graphics", "plot")
+importFrom("stats", "cor", "dnorm", "lm", "median", "pnorm", "quantile", "rgamma", "rnorm", "sd")
+
+
+S3method(summary, sparsereg)
+S3method(plot, sparsereg)
+S3method(print, sparsereg)
+
