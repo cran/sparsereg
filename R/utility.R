@@ -185,7 +185,7 @@ plot.sparsereg.inner(x,...)
 }
 #plots the densities of the posterior
 
-volcanoplot<-function(x,columns=NULL,newlabels=NULL,type="mode",stage=NULL){
+violinplot<-function(x,columns=NULL,newlabels=NULL,type="mode",stage=NULL){
 	if(x$modeltype=="onestage") stage<-1
 		if(stage!=1 & stage!=2 & x$modeltype=="twostage") stop("For a two stage object, stage must be set to 1 or 2")
 

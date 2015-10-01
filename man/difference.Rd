@@ -31,7 +31,7 @@ Variables names for the effects to difference.}
 \references{
 Ratkovic, Marc and Tingley, Dustin.  2015.  "Sparse Estimation with Uncertainty: Subgroup Analysis in Large Dimensional Design."  Working paper.
 }
-\seealso{\link{sparsereg}, \link{plot.sparsereg}, \link{summary.sparsereg}, \link{volcanoplot},  \link{print.sparsereg}}
+\seealso{\link{sparsereg}, \link{plot.sparsereg}, \link{summary.sparsereg}, \link{violinplot},  \link{print.sparsereg}}
 \examples{
 \dontrun{
  set.seed(1)

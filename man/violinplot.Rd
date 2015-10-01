@@ -1,13 +1,13 @@
-\name{volcanoplot}
-\alias{volcanoplot}
+\name{violinplot}
+\alias{violinplot}
 \title{
 Function for plotting posterior distribution of effects of interest.
 }
 \description{
-The function produces a volcano plot for specified effects.  This can be useful for presenting or examining particular marginal effects of interest.
+The function produces a violin plot for specified effects.  This can be useful for presenting or examining particular marginal effects of interest.
 }
 \usage{
-volcanoplot(x, columns=NULL, newlabels=NULL, type="mode", stage=NULL)
+violinplot(x, columns=NULL, newlabels=NULL, type="mode", stage=NULL)
 }
 \arguments{
   \item{x}{
@@ -19,14 +19,14 @@ Object of class \env{sparsereg}.
 
 \item{type}{ Options are \env{"mode"} and \env{"mean"}. Whether to plot the posterior mode or mean.}
 
-\item{stage}{  When plotting output from a sparsereg object, the argument is ignored. When plotting output from a type 2 tobit, whether to return stage 1 or stage 2 results.}
+\item{stage}{  Currently, this argument is ignored.}
 
 }
 
 
 
 \details{
-Generates a volcano plot for coefficients from object from class \env{sparsereg}.  The desired coefficients can be requested using the \env{columns} argument and they can be assigned new names through \env{newlabels}.   }
+Generates a violin plot for coefficients from object from class \env{sparsereg}.  The desired coefficients can be requested using the \env{columns} argument and they can be assigned new names through \env{newlabels}.   }
 \references{
 Ratkovic, Marc and Tingley, Dustin.  2015.  "Sparse Estimation with Uncertainty: Subgroup Analysis in Large Dimensional Design."  Working paper.
 }
@@ -48,7 +48,7 @@ Ratkovic, Marc and Tingley, Dustin.  2015.  "Sparse Estimation with Uncertainty:
 
 ##Fit a linear model with five covariates.
  s1<-sparsereg(y,X[,1:5])
- volcanoplot(s1,1:3)
+ violinplot(s1,1:3)
 }
 
 }

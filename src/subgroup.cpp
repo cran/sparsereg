@@ -30,6 +30,8 @@ arma::mat dtau = Rcpp::as< arma::mat >(dtau0);
 arma::mat betaci = betamode;
 arma::mat betals = betamode;
 
+arma::mat betaEM = betamode;
+
 arma::mat sigmasq=Rcpp::as< arma::mat >(sigmasq0);
 arma::mat ps_sigmasq=Rcpp::as< arma::mat >(ps_sigmasq0);
 arma::mat k=Rcpp::as< arma::mat >(k0);
@@ -59,13 +61,13 @@ betals(i_coef,0) = ols_est;
 
 //Update posterior mean and CI
 double meantemp = olsnum(0,0)/A_curr;
-//Rcpp::NumericVector ranscalar = rnorm(1,0,1);
+Rcpp::NumericVector ranscalar = rnorm(1,0,1);
 
 //Update CI
 //betaci(i_coef,0) =  (pow((1+p)*sigmasq(0,0)/olsdenom,.5)); 
- arma::mat errs = y-fits;
- arma::mat temp = arma::strans(errs)*errs;
- betaci(i_coef,0)=temp(0,0)/(n-1);
+ //arma::mat errs = y-fits;
+ //arma::mat temp = arma::strans(errs)*errs;
+ //betaci(i_coef,0)=temp(0,0)/(n-1);
 
 double oldbeta = betacurr(i_coef,0);
 //double newbeta =meantemp+ranscalar(0)*pow(sigmasq(0,0)/A_curr,.5); 
@@ -75,12 +77,15 @@ var_beta(i_coef,0)= sigmasq(0,0)/A_curr;
 //Update with antithetical gibbs sampler
 double newbeta = 2*meantemp-oldbeta;
 
+betaci(i_coef,0)=meantemp+ranscalar(0)*pow(ps_sigmasq(0,0)/A_curr,.5); 
+betaEM(i_coef,0) = meantemp;
 //Update with gibbs sampler
 //double newbeta =meantemp+ranscalar(0)*pow(var_beta(i_coef,0),.5); 
 
 
 betacurr(i_coef,0) =newbeta;
 double delbeta = newbeta-oldbeta;
+
 
 	for(int i_fit =0; i_fit<n; i_fit ++) 
 			{
@@ -162,7 +167,7 @@ betamode(i_coef) = ols_est;
 
 
 return Rcpp::List::create(Rcpp::Named("beta.mean") = betacurr, Rcpp::Named("beta.mode") = betamode, Rcpp::Named("var.beta") = var_beta,Rcpp::Named("beta.ci")= betaci,
-Rcpp::Named("beta.ols") = betals
+Rcpp::Named("beta.ols") = betals, Rcpp::Named("beta.EM")=betaEM
 );
 
 

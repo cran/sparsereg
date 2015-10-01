@@ -19,14 +19,15 @@ Object of class \env{sparsereg}.
 }
 
 
-\details{Uses the \env{summary} function from the package \env{coda} to return a summary of the posterior mode of a \env{sparsereg} object.  The argument \env{stage} is required when printing output from a type 2 tobit.	 When printing output from a sparsereg object, the argument is ignored. 
+\details{Uses the \env{summary} function from the package \env{coda} to return a summary of the posterior mode of a \env{sparsereg} object. 
+	
 }
 
 	
 \references{
 Ratkovic, Marc and Tingley, Dustin.  2015.  "Sparse Estimation with Uncertainty: Subgroup Analysis in Large Dimensional Design."  Working paper.
 }
-\seealso{\link{sparsereg}, \link{plot.sparsereg}, \link{summary.sparsereg}, \link{volcanoplot}, \link{difference}}
+\seealso{\link{sparsereg}, \link{plot.sparsereg}, \link{summary.sparsereg}, \link{violinplot}, \link{difference}}
 \examples{
 
 \dontrun{

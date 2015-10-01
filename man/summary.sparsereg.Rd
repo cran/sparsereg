@@ -48,14 +48,14 @@ Whether to return the normal approximate confidence interval (default of TRUE) o
 Whether to print a summary table.}
 
 \env{stage}{
-	 When summarizing output from a sparsereg object, the argument is ignored. When summarizing output from a type 2 tobit, whether to return stage 1 or stage 2 results.
+	 Currently this argument is ignored.
 }
 
 }
 \references{
 Ratkovic, Marc and Tingley, Dustin.  2015.  "Sparse Estimation with Uncertainty: Subgroup Analysis in Large Dimensional Design."  Working paper.
 }
-\seealso{\link{sparsereg}, \link{plot.sparsereg}, \link{volcanoplot}, \link{difference}, \link{print.sparsereg}}
+\seealso{\link{sparsereg}, \link{plot.sparsereg}, \link{violinplot}, \link{difference}, \link{print.sparsereg}}
 \examples{
 
 \dontrun{

@@ -30,17 +30,13 @@ Label for x-axis.
 Takes on the value of FALSE or 1, 2, or 3, denoting whether to return a single plot for main effects (1), interactive effects (2), or two-way interactions (3).
 }
 
-\env{stage}{
-	 When plotting output from a sparsereg object, the argument is ignored. When plotting output from a type 2 tobit, whether to return stage 1 or stage 2 results.
-}
-
 
 }
 \references{
 Ratkovic, Marc and Tingley, Dustin.  2015.  "Sparse Estimation with Uncertainty: Subgroup Analysis in Large Dimensional Design."  Working paper.
 }
 
-\seealso{\link{sparsereg}, \link{plot.sparsereg}, \link{summary.sparsereg}, \link{volcanoplot}, \link{difference}}
+\seealso{\link{sparsereg}, \link{plot.sparsereg}, \link{summary.sparsereg}, \link{violinplot}, \link{difference}}
 \examples{
 \dontrun{
  set.seed(1)

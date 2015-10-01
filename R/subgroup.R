@@ -9,8 +9,19 @@
 
 #scale.type: none, expand.treat, expand.X
 
-sparsereg<-function(y, X, treat=NULL, gibbs=200, burnin=200, thin=10,type="linear", group=NULL,  trunc=NULL, lower.trunc=NULL, one.constraint=FALSE, scale.type="none", baseline.vec=NULL, id=NULL, id2=NULL, id3=NULL,save.temp=FALSE){
+sparsereg<-function(y, X, treat=NULL, EM=FALSE, gibbs=200, burnin=200, thin=10,  scale.type="none", baseline.vec=NULL, id=NULL, id2=NULL, id3=NULL, save.temp=FALSE){
 
+#To be added in later!
+type="linear"
+trunc=NULL 
+lower.trunc=NULL
+one.constraint=FALSE
+asymp<-TRUE
+if(EM){
+	thin=2
+	burnin=0
+}
+	
 	##Warnings
 	if(!scale.type%in%c("none","TX","TTX","TT")) stop("scale.type should be one of none, TX, TTX, or TT")
 	if(!type%in%c("linear","probit","tobit")) stop("type should be one of linear, probit, or tobit")
@@ -38,8 +49,8 @@ sparsereg<-function(y, X, treat=NULL, gibbs=200, burnin=200, thin=10,type="linea
 	if(length(treat)!=0) treat<-data.frame(treat)
 	n<-length(y)
 
-cat("Step 1 of 4: Formatting Data","\n")
-
+if(!EM) cat("Step 1 of 4: Formatting Data","\n")
+if(EM)  cat("Step 1 of 3: Formatting Data","\n")
 	if(length(X)>0){
 		if(length(colnames(X))==0) colnames(X)<-paste("X",1:ncol(X),sep="")
 	X<-X[,apply(X,2,sd)>0]
@@ -170,6 +181,8 @@ for(i in 1:(ncol(X.big)-1)) for(j in (i+1):ncol(X.big)){
 	colnames(matrix.convert)<-colnames(X.big)
 	for(i.scale in 1:ncol(X.lin)) matrix.convert[i.scale,unlist(scale.big[i.scale])]<-1
 
+	#if(length(group)>0){if(group=="bylevel") c.cluster<-as.numeric(as.factor(colSums(matrix.convert)))}
+
 	scale.back<-apply(X.big,2,FUN=function(x) sd(x))
 
 	for(i.scale in 1:ncol(X.big)) X.big[,i.scale]<-X.big[,i.scale]/scale.back[i.scale]
@@ -215,7 +228,13 @@ for(i in 1:(ncol(X.big)-1)) for(j in (i+1):ncol(X.big)){
 	ps.sigmasq<-sigma.sq<-mean((y-X.big%*%beta.curr)^2)
 	if(type=="probit") sigma.sq<-1
 
+	##For Dirichlet Dirichlet Laplacian; not used anymore
+	psi<-phi<-rep(1/p,p)
+	grand.lambda<-grandTau<-1
 	lambda.shrink<-lambda.all<-rep(0,p)
+	rel.wts<-1
+	alpha0<-.25
+	
 	for(i in unique(c.cluster)) {
 		lambda.all[c.cluster==i]<-(2*sum(c.cluster==i)/sum(abs(beta.curr)[c.cluster==i]))^.5
 		}
@@ -237,7 +256,7 @@ for(i in 1:(ncol(X.big)-1)) for(j in (i+1):ncol(X.big)){
 	ran.effect1<-ran.effect2<-ran.effect3<-rep(0,n)
 	sigma.sq.b<-sigma.sq.b2<-sigma.sq.b3<-1
 
-	re1<-updateREs(y, fits.main=as.vector(X.big%*%beta.curr), ran.effect1, ran.effect2, ran.effect3, id, id2, id3,sigma.sq.b, sigma.sq.b2,sigma.sq.b3,sigma.sq=1,fix.eff=FALSE)
+	re1<-updateREs(y, fits.main=as.vector(X.big%*%beta.curr), ran.effect1, ran.effect2, ran.effect3, id, id2, id3,sigma.sq.b, sigma.sq.b2,sigma.sq.b3,sigma.sq=1,fix.eff=FALSE,EM0=EM)
 	sigma.sq.b<-re1$sigmas[1]
 	sigma.sq.b2<-re1$sigmas[2]
 	sigma.sq.b3<-re1$sigmas[3]
@@ -247,25 +266,57 @@ for(i in 1:(ncol(X.big)-1)) for(j in (i+1):ncol(X.big)){
 	ran.effect<-rowSums(re1$REs)
 	} 
 
-cat("Step 2 of 4: Beginning Burnin Period","\n")
+if(!EM) cat("Step 2 of 4: Beginning Burnin Period","\n")
+if(EM) cat("Step 2 of 3: Beginning EM","\n")
 
+	beta.conv<-beta.curr
 	##Begin gibbs loop
 	for(i.gibbs in 1:(burnin+gibbs)){	
+			if(i.gibbs>1){
+		if(max(abs(beta.conv-beta.curr))<1e-4) break
+		beta.conv<-beta.curr
+	}	
 	for(i.thin in 1:thin){#Start thin loop
-	##Update tau^2; need these for betas
 	muprime.all<-abs(lambda.all*sqrt(sigma.sq))/abs(beta.curr)
 	lambda.prime<-lambda.all^2
-	invTau2<-sapply(1:length(muprime.all), FUN=function(i) rinv.gaussian(1, muprime.all[i], (lambda.prime[i] ) ) )
+	if(!EM) {
+		invTau2<-sapply(1:length(muprime.all), FUN=function(i) rinv.gaussian(1, muprime.all[i], (lambda.prime[i] ) ) )
 	Dtau<-abs(1/invTau2)
-	
-	up1<-updatebeta_cpp(X0=X.big, y0=as.matrix(y-ran.effect), betacurr0=as.matrix(beta.curr), betamode0=as.matrix(beta.curr.mode), lambdavec0=as.matrix(lambda.all), dtau0=as.matrix(Dtau), sigmasq0=as.matrix(sigma.sq),ps_sigmasq0=as.matrix(ps.sigmasq),lambdashrink0=as.matrix(lambda.shrink),
+	} else{
+		Dtau<-NULL
+		tau.try<-seq(.001,500,.01)
+		for(i.tau in 1:length(muprime.all)) {
+			range.tau<-NULL
+			#range.tau<-range(rinv.gaussian(100,muprime.all[i.tau],lambda.prime[i.tau]))
+			range.tau[1]<-muprime.all[i.tau]/5#,lambda.prime[i.tau])
+			range.tau[2]<-muprime.all[i.tau]+muprime.all[i.tau]^1.5/lambda.prime[i.tau]^.5*5
+			tau.try<-seq(range.tau[1],range.tau[2],length=500)
+			probs.tau<-dinv.gaussian(tau.try,muprime.all[i.tau],lambda.prime[i.tau])	
+			probs.tau<-probs.tau/sum(probs.tau,na.rm=TRUE)
+			Dtau[i.tau]<-sum(probs.tau/tau.try,na.rm=TRUE)
+			}
+		
+		}
+
+
+	up1<-updatebeta_cpp(X0=X.big, y0=as.matrix(y-ran.effect), betacurr0=as.matrix(beta.curr), betamode0=as.matrix(beta.curr.mode), lambdavec0=as.matrix(lambda.all*rel.wts), dtau0=as.matrix(Dtau*rel.wts^2), sigmasq0=as.matrix(sigma.sq),ps_sigmasq0=as.matrix(ps.sigmasq),lambdashrink0=as.matrix(lambda.shrink*rel.wts),
 	k0=as.matrix(1)
 	)
 	beta.curr<-up1$beta.mean
 	beta.curr.mode<-up1$beta.mode
 	beta.curr.ci<-up1$beta.ci
-	if(i.thin==thin){
+	if(EM) {
+		beta.curr<-up1$beta.EM*.5+beta.curr*.5
+		beta.curr.ci<-beta.curr
+	}
+	beta.curr[abs(beta.curr)<1e-10]<-1e-10
+	#df.adj<-max(1, nrow(X.big)-ncol(X.big))
+	#beta.curr.ci<-rnorm(p,up1$beta.ci,up1$var.beta^.5/rgamma(p,df.adj/2,df.adj/2)^.5)
 
+
+##Calculate approximate confidence interval
+#if(i.thin==thin){
+if(i.thin==thin&!EM){
 #	ps.sigmasq<-rinvgamma(1,shape=ps.sigma.sq.shape,scale=sigma.sq.scale)
 
 	for(i.var in 1:p){
@@ -273,15 +324,15 @@ cat("Step 2 of 4: Beginning Burnin Period","\n")
         lambda.use<-lambda.all[i.var]
 	in.phi<-abs(n^.5*abs(beta.ls/sigma.sq^.5)-lambda.shrink[i.var]*ps.sigmasq^.5/(sigma.sq^.5*(n-1)) ) 
 	p.z<-pnorm(in.phi)
-        beta.2<-beta.curr.mode[i.var]
+        beta.2<-beta.curr.mode[i.var]^2
 	var.beta2<-sigma.sq/(n-1)
         var.betals<-beta.curr.ci[i.var]
-	var.lambda<-1/(4*lambda.use^2)*(p*n^.5+1)/(sum(Dtau)/2+1.78)^2
+	var.lambda<-1/(4*grand.lambda^2)*(p*n^.5+1)/(sum(Dtau*rel.wts^2)/2+1.78)^2+grand.lambda^2*wts.lam[i.var]^4*var.u[i.var]  #sum(Dtau*rel.wts^2)/2+1.78)^.5
         beta.sigma<-sigma.sq.scale#(beta.curr.ci[i.var]*(n-1)+sum(beta.curr^2/Dtau))/2
         alpha.sigma<-ps.sigma.sq.shape#(n^.5-1)/2
         #Variance of pseudo sigma
         var.sigma<-1/(4*ps.sigmasq)*beta.sigma/((alpha.sigma-1)^2*(alpha.sigma-2))
-        
+        var.sigma.eps<-1/(4*sigma.sq)*sigma.sq.scale/((sigma.sq.shape-1)^2*(sigma.sq.shape-2))
 
 	
 
@@ -290,14 +341,23 @@ cat("Step 2 of 4: Beginning Burnin Period","\n")
                 p.z^2*var.beta2+
                 n/sigma.sq*(beta.2*dnorm(in.phi)*1/sigma.sq^.5)^2*var.betals+
                 n/sigma.sq*(beta.2*dnorm(in.phi)*beta.ls*lambda.shrink[i.var]/(n-1))^2*var.sigma+
-                n/var.betals*(beta.2*dnorm(in.phi)*ps.sigmasq/(n-1))^2*var.lambda
-                )
-
+                n/var.betals*(beta.2*dnorm(in.phi)*ps.sigmasq/(n-1))^2*var.lambda+
+                n*(beta.2*dnorm(in.phi)*((abs(beta.2)/sigma.sq)-lambda.shrink[i.var]*ps.sigmasq/sigma.sq/n))^2*var.sigma.eps
+                
+                )#*(1.43)^2#qcauchy(.1)/qnorm(.1)=3.84#qt(.05,3)/1.6444=1.43 bc largest t w finite variance
+		beta.curr.ci[i.var]<-max(beta.curr.ci[i.var],up1$var.beta[i.var])
 	
 	}
-	beta.curr.ci<-abs(beta.curr.ci)^.5
+	
+	y.temp<-y-ran.effect
 
-	mean.temp<-beta.curr.mode
+	if(!exists("fits")) fits<-X.big%*%up1$beta.curr
+	si<-(y.temp-ran.effect-fits)/n
+	ki<-1/n
+	df.satter<-sum(si^2)^2/sum(si^4)
+	beta.curr.ci<-abs(beta.curr.ci)^.5/rgamma(1,df.satter/2,df.satter/2)^.5
+
+	mean.temp<-up1$beta.ols#beta.curr.mode
 	set.temp<-beta.curr.mode==0
 	if(sum(set.temp)>0)
         beta.curr.ci[set.temp]<-rnorm(sum(set.temp>0),mean.temp[set.temp],sd=beta.curr.ci[set.temp])
@@ -310,18 +370,10 @@ cat("Step 2 of 4: Beginning Burnin Period","\n")
 	beta.curr.ci[set.temp]<-rtnorm(sum(set.temp),mean=mean.temp[set.temp],sd=beta.curr.ci[set.temp],
 	lower=-Inf,upper=0)
 	}
-	#if(block){
-	#A.big<-XprimeX+diag(1/Dtau)
-	#A.big.inv<-ginv(A.big)
-	#beta.var<-sigma.sq*A.big.inv
-	#beta.vec<-A.big.inv%*%t(X.big)%*%(y-ran.effect)
-	#	beta.curr<-mvrnorm(1,mu=beta.vec,Sigma=beta.var)
-	#}
-
 
 	
 	if(k.raneff>0){
-	re1<-updateREs(y, fits.main=as.vector(X.big%*%beta.curr), ran.effect1, ran.effect2, ran.effect3, id, id2, id3,	sigma.sq.b, sigma.sq.b2, sigma.sq.b3, 1,fix.eff=FALSE)
+	re1<-updateREs(y, fits.main=as.vector(X.big%*%beta.curr), ran.effect1, ran.effect2, ran.effect3, id, id2, id3,	sigma.sq.b, sigma.sq.b2, sigma.sq.b3, 1,fix.eff=FALSE,EM0=EM)
 	sigma.sq.b<-re1$sigmas[1]
 	sigma.sq.b2<-re1$sigmas[2]
 	sigma.sq.b3<-re1$sigmas[3]
@@ -335,24 +387,118 @@ cat("Step 2 of 4: Beginning Burnin Period","\n")
 	##Update sigmas, lambda
 	sigma.sq.shape<-(n-1)/2+p/2+k.raneff/2
 	ps.sigma.sq.shape<-(n^.5-1)/2+p/2+k.raneff/2
-	sigma.sq.scale<-sum((y-fits)^2)/2+ sum(beta.curr^2/Dtau)/2
+	sigma.sq.scale<-sum((y-fits)^2)/2+ sum(beta.curr^2/(Dtau*rel.wts^2))/2
+
 	sigma.sq<-rinvgamma(1,shape=sigma.sq.shape,scale=sigma.sq.scale)
+
 	ps.sigmasq<-rinvgamma(1,shape=ps.sigma.sq.shape,scale=sigma.sq.scale)
+	
+	
+	if(EM){
+		sigma.sq<-sigma.sq.scale/(sigma.sq.shape-1)
+		ps.sigmasq<-sigma.sq.scale/(ps.sigma.sq.shape-1)
+	}
 	if(type=="probit") sigma.sq<-1
 
 
-
-		
-	for(i in unique(c.cluster)) {
-		lambda.all[c.cluster==i]<-rgamma(1, shape=sum(c.cluster==i)*n^.5+1, rate=sum(Dtau[c.cluster==i])/2+1.78)^.5
-		}
-	if(i.thin==1) p.adj<-n^.5
-	if(one.constraint) lambda.all[1:length(lambda.all)]<-rgamma(1, shape=p*p.adj+1, rate=sum(Dtau)/2+1.78)^.5
+	p.adj<-n^.5
 	lambda.shrink<-lambda.all
 
+
+	rel.wts<-1
+	grand.lambda<-rgamma(1, shape=p*p.adj+1, rate=sum(Dtau*rel.wts^2)/2+1.78)^.5
+
+	if(EM) {
+		lambda.range<-NULL
+		lambda.range[1]<-qgamma(0.001, shape=p*p.adj+1, rate=sum(Dtau*rel.wts^2)/2+1.78)
+		lambda.range[2]<-qgamma(1-0.001, shape=p*p.adj+1, rate=sum(Dtau*rel.wts^2)/2+1.78)
+		lambda.try<-seq(lambda.range[1],lambda.range[2],length=500)
+		lambda.prob<-dgamma(lambda.try, shape=p*p.adj+1, rate=sum(Dtau*rel.wts^2)/2+1.78)
+		lambda.prob[is.na(lambda.prob)]<-0
+		lambda.prob<-lambda.prob/sum(lambda.prob)
+		grand.lambda<-sum(lambda.prob*lambda.try^.5)
+	}
+		wts.lam<-NULL
+		#for(i.g in 1:p) wts.lam[i.g]<-rgig(1, .5, 1,abs(beta.curr/sigma.sq^.5)[i.g])
+		#wts.lam<-rgamma(p,p.adj+1/2,(abs(beta.curr)/sqrt(sigma.sq))^.25)
+		#wts.lam<-wts.lam/mean(wts.lam)
+		#print(beta.curr[1:10])	
+
+	#var.u[whatev]<- gets the estimated variance
+
+		u.calc<-function(beta,alpha.func=alpha0,EM0=EM){
+			u.try<-seq(.025,20,.025)
+			#p.al<-exp(-u.try*beta-u.try^-alpha.func)*u.try^(-(2+n^.25))
+			p.al.exp<-(-u.try*beta-u.try^-alpha.func)-(2+n^.25)*(log(u.try))
+			p.al.exp<-p.al.exp-max(p.al.exp)
+			p.al.exp[p.al.exp< -20]<- -20
+			p.al<-exp(p.al.exp)
+			
+			p.al<-p.al/sum(p.al)
+			
+			var.out<-sum(u.try^2*p.al)-(sum(u.try*p.al))^2
+			u.samp<-sample(size=1,u.try,prob=p.al)
+			if(EM0) u.samp<-sum(p.al*u.try)
+			#print(which(out==u.try)/length(u.try))
+			out<-list("var.out"=var.out,"u.samp"=u.samp)
+			#sum(u.try*p.al)/sum(p.al)
+			return(out)
+			}
+			
+		var.u<-NULL
+			
+		#wts.lam<-sapply(grand.lambda*abs(beta.curr/sigma.sq^.5),u.calc)
+		for(i.u in 1:length(beta.curr)) {
+			temp.calc<-u.calc(grand.lambda*abs(beta.curr[i.u]/sigma.sq^.5))
+			wts.lam[i.u]<-temp.calc$u.samp
+			var.u[i.u]<-temp.calc$var.out
+		}
+		#print(wts.lam)
+		alpha.calc<-function(x){
+			-sum(abs(wts.lam)^x)+2*sum(log(wts.lam))+    p*log(x)-p*lgamma(4/x)-x	}
+		
+	#print("here?")
+		alpha.try<-seq(.025,10,.025)
+		log.alpha<-sapply(alpha.try,alpha.calc)
+		log.alpha<-log.alpha-max(log.alpha)
+		log.alpha[log.alpha< -20]<--20
+		#print(log.alpha)
+		wt.alpha<-exp(log.alpha)#/sum(exp(log.alpha))
+	
+		alpha0<-sample(size=1,alpha.try,prob=wt.alpha)
+
+		if(EM) {
+			wt.alpha<-wt.alpha/sum(wt.alpha)
+			alpha0<-sum(alpha.try*wt.alpha)
+			#alpha0<-alpha.try[wt.alpha==max(wt.alpha)][1]
+			#alpha0<-1
+
+		}
+		#print(alpha0)
+
+		lambda.shrink<-lambda.all<-rep(grand.lambda,p)*wts.lam
+			
+
+		
+		
+
+
+
+
+
 	if(type=="probit"){
+		
+		if(!EM){
 		y[y0==1]<-rtnorm(fits[y0==1],lower=0,upper=Inf)
 		y[y0==0]<-rtnorm(fits[y0==0],lower=-Inf,upper=0)
+		}else{
+		alpha.tn<-0-fits[y0==1]
+		beta.tn<-Inf
+		y[y0==1]<-fits[y0==1]+dnorm(alpha.tn)/(pnorm(beta.tn)-pnorm(alpha.tn))
+		alpha.tn<--Inf
+		beta.tn<-fits[y0==0]	-0
+		y[y0==0]<-fits[y0==0]-dnorm(beta.tn)/(pnorm(beta.tn)-pnorm(alpha.tn))
+			}
 	}
 	
 	if(type=="tobit"){
@@ -376,6 +522,7 @@ cat("Step 2 of 4: Beginning Burnin Period","\n")
 	}
 	
 	
+	if(!EM){
 	if(i.gibbs==1) cat("    0% of Burnin Completed:", i.gibbs,"/",burnin,"\n")	
 	if(i.gibbs==floor(burnin/4)) cat("   25% of Burnin Completed:", i.gibbs,"/",burnin,"\n")
 	if(i.gibbs==floor(burnin/2)) cat("   50% of Burnin Completed:", i.gibbs,"/",burnin,"\n")
@@ -386,18 +533,29 @@ cat("Step 2 of 4: Beginning Burnin Period","\n")
 	if(i.gibbs==floor(burnin+(gibbs)/4)) cat("   25% of Samples Gathered:", i.gibbs-burnin,"/",gibbs,"\n")
 	if(i.gibbs==floor(burnin+(gibbs)/2)) cat("   50% of Samples Gathered:", i.gibbs-burnin,"/",gibbs,"\n")
 	if(i.gibbs==floor(burnin+3*(gibbs)/4)) cat("   75% of Samples Gathered:", i.gibbs-burnin,"/",gibbs,"\n")
-	if(i.gibbs==floor(burnin+gibbs)) cat("  100% of Samples Gathered:", i.gibbs-burnin,"/",burnin,"\n")
-
+	if(i.gibbs==floor(burnin+gibbs)) cat("  100% of Samples Gathered:", i.gibbs-burnin,"/",gibbs,"\n")
+	}
 	##Gather things
 	}#End gibbs loop
-	cat("Step 4 of 4: Gathering Output\n")
+
+if(EM){
+	if(i.gibbs%%10==0) cat("  EM iteration ", i.gibbs, "\n")
+}
+
+if(EM) cat("Step 3 of 3: Gathering Output")
+if(!EM)	cat("Step 4 of 4: Gathering Output\n")
 	
+
 		for(i.scale in 1:nrow(beta.mean)) {
 			beta.mean[i.scale,]<-beta.mean[i.scale,]/scale.back[i.scale]*scale.y
 			beta.mode[i.scale,]<-beta.mode[i.scale,]/scale.back[i.scale]*scale.y
 			beta.ci[i.scale,]<-beta.ci[i.scale,]/scale.back[i.scale]*scale.y
 
 			}
+			
+
+		
+	
 	matrix.names<-matrix(NA,nrow=3,ncol=ncol(X.big))
 	rownames(matrix.names)<-c("X","treat1","treat2")
 
@@ -407,7 +565,22 @@ cat("Step 2 of 4: Beginning Burnin Period","\n")
 	row.names(beta.mode)<-gsub("_",": ",row.names(beta.mode))
 	row.names(beta.mean)<-gsub("_",": ",row.names(beta.mean))
 
-	output<-list("beta.mode"=as.mcmc(t(beta.mode)),"beta.mean"=as.mcmc(t(beta.mean)),"beta.ci"=as.mcmc(t(beta.ci)),
+	if(EM){
+		max.rows<-max(which(!is.na(beta.mean[1,])))
+		beta.mean<-beta.mean[,max.rows]
+		beta.mode<-beta.mode[,max.rows]
+		beta.ci<-beta.mode
+		beta.mean<-rbind(beta.mean,beta.mean,beta.mean)
+		beta.mode<-rbind(beta.mode,beta.mode,beta.mode)
+		beta.ci<-beta.mode
+	}  else{
+		beta.mode=as.mcmc(t(beta.mode))
+		beta.mean=as.mcmc(t(beta.mean))
+		beta.ci=as.mcmc(t(beta.ci))
+		}
+	
+
+	output<-list("beta.mode"=beta.mode,"beta.mean"=beta.mean,"beta.ci"=beta.ci,
 	"sigma.sq"=sigma.sq.run*scale.y^2,"X"=X.big,"y"=y,"lambda"=lambda.run,
 	"varmat"=matrix.convert,"baseline"=baseline.vec,"modeltype"="onestage")
 	class(output)<-"sparsereg"
@@ -416,5 +589,4 @@ cat("Step 2 of 4: Beginning Burnin Period","\n")
 	
 #sparsereg<-function(y, X,...) 	subgroup(y, X, treat=NULL, ...)	
 #csts<-function(y, X, id=NULL, id2=NULL, id3=NULL, ...) 	subgroup(y, X,id=id,id2=id2,id3=id3,...)
-
 

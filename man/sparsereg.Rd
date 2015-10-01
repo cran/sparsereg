@@ -1,17 +1,17 @@
 \name{sparsereg}
 \alias{sparsereg}
 \title{Sparse regression for experimental and observational data.}
-\description{Function for fitting a Bayesian LASSOplus model for fitting sparse models with uncertainty, facilitating the discovery of various types of interactions. Function takes a dependent variable, an optional matrix of (pre-treatment) covariates, and a (optional) matrix of categorical treatment variables. Includes correct calculation of uncertainty estimates, including for data with repeated observations.}
+\description{Function for fitting a Bayesian LASSOplus model for sparse models with uncertainty, facilitating the discovery of various types of interactions. Function takes a dependent variable, an optional matrix of (pre-treatment) covariates, and a (optional) matrix of categorical treatment variables. Includes correct calculation of uncertainty estimates, including for data with repeated observations.}
 \usage{
-sparsereg(y, X, treat=NULL, gibbs=200, burnin=200, thin=10, type="linear",  
-group=NULL, trunc=NULL, lower.trunc=NULL, one.constraint=FALSE,  
-scale.type="none", baseline.vec=NULL, 
-id=NULL, id2=NULL, id3=NULL, save.temp=FALSE)
+sparsereg(y, X, treat=NULL, EM=FALSE, gibbs=200, burnin=200, thin=10,  
+scale.type="none", baseline.vec=NULL, id=NULL, id2=NULL, id3=NULL, 
+save.temp=FALSE)
 }
 \arguments{
   \item{y}{Dependent variable.}
 \item{X}{Covariates. Typical vocabulary would refer to these as "pre-treatment" covariates.}
 \item{treat}{Matrix of categorical treatment variables. May be a matrix with one column in the case of there being only one treatment variable.}
+\item{EM}{Whether to fit model via EM or MCMC.  EM is much quicker, but only returns point estimates.  MCMC is slower, but returns posterior intervals and approximate confidence intervals.}
 \item{gibbs}{Number of posterior samples to save.  Between each saved sample,  \env{thin} samples are drawn.}
 \item{burnin}{
 Number of burnin samples.   Between each burnin sample,  \env{thin} samples are drawn.
@@ -20,26 +20,10 @@ These iterations will not be included in the resulting analysis.
 \item{thin}{
 Extent of thinning of the MCMC chain.  Between each posterior sample, whether burnin or saved, \env{thin} draws are made.
 }
-\item{type}{
-Type of statistical model to be fit. Options include \env{type="linear"} for linear regression, \env{type="probit"} for a probit regression, and \env{type="tobit"} for regression with censoring.
-}
-\item{group}{
-A vector of integers characterizing which covariates are under the same LASSO constraint.  For example, the vector c(1,1,2,2,2) will place the first two covariates under one LASSO constraint and the last three under another.  Only works for \env{type="none"}.  Note: currently not implemented.
-}
-\item{trunc}{
-Whether or not the dependent variable is truncated.
-}
-\item{lower.trunc}{
-Lower value of truncation of dependent variable.  Only value for \env{type="tobit"}
-}
-\item{one.constraint}{
-Whether to fit a single LASSO constraint.
-}
 \item{baseline.vec}{Optional vector with one entry for each column of the treatment matrix.  Each entry gives the baseline condition for that treatment, which then during pre-processing is omitted for estimation so it serves as an excluded category.}
 \item{id, id2, id3}{
 Vectors the same lenght of the sample denoting clustering in the data.  In a conjoint experiment with repeated observations, these correspond with respondent IDs.  Up to three different sets of random effects are allowed.
 }
-
 \item{scale.type}{
 Indicates the types of interactions that will be created and used in estimation. \env{scale.type="none"} generates no interactions and corresponds to simply running LASSOplus with no interactions between variables.
 \env{scale.type="TX"} creates interactions between each X variable and each level of the treatment variables. \env{scale.type="TT"} creates interactions between each level of separate treatment variables.
@@ -51,7 +35,7 @@ Note that users can create their own interactions of interest, select \env{scale
 \details{
 The function \env{sparsereg} allows for estimation of a broad range of sparse regressions.  The method allows for continuous, binary, and censored outcomes.  In experimental data, it can be used for subgroup analysis.  It pre-processes lower-order terms to generate higher-order interactions terms that are uncorrelated with their lower order component, with pre-processing generated through \env{scale.type}.  In observational data, it can be used in place of a standard regression, especially in the presence of a large number of variables.  The method also adjusts uncertainty estimates when there are repeated observations through using random effects.  For example, a conjoint design may have the same people make several comparisons, or a panel data regression may have multiple observations on the same unit.
 
-The object contains the estimated posterior for all of the modeled effects, and analyzing the object is facilitated by the functions \env{plot}, \env{summary}, \env{volcanoplot}, and \env{difference}.
+The object contains the estimated posterior for all of the modeled effects, and analyzing the object is facilitated by the functions \env{plot}, \env{summary}, \env{violinplot}, and \env{difference}.
 }
 \value{
   \item{beta.mode}{Matrix of sparse (mode) estimates with rows equal to number of effects and columns for posterior samples.}
@@ -68,7 +52,7 @@ Ratkovic, Marc and Tingley, Dustin.  2015.  "Sparse Estimation with Uncertainty:
 
 Egami, Naoki and Imai, Kosuke. 2015. "Causal Interaction in High-Dimension."  Working paper.
 }
-\seealso{\link{plot.sparsereg}, \link{summary.sparsereg}, \link{volcanoplot}, \link{difference}, \link{print.sparsereg}}
+\seealso{\link{plot.sparsereg}, \link{summary.sparsereg}, \link{violinplot}, \link{difference}, \link{print.sparsereg}}
 \examples{
 
 \dontrun{
@@ -83,15 +67,25 @@ Egami, Naoki and Imai, Kosuke. 2015. "Causal Interaction in High-Dimension."  Wo
  y<-y.true+rnorm(n)
 
 ##Fit a linear model.
-s1<-sparsereg(y,X,treat,scale.type="TX")
+s1<-sparsereg(y, X, treat, scale.type="TX")
+s1.EM<-sparsereg(y, X, treat, EM=TRUE, scale.type="TX")
+
+##Summarize results from MCMC fit
+summary(s1)
+plot(s1)
+violinplot(s1)
+
+##Summarize results from MCMC fit
+summary(s1.EM)
+plot(s1.EM)
 
 ##Extension using a baseline category
-s1.base<-sparsereg(y,X,treat,scale.type="TX",baseline.vec="a")
-ests.base<-apply(s1.base$beta.mode,1,median)
+s1.base<-sparsereg(y, X, treat, scale.type="TX", baseline.vec="a")
 
-##Extension using a probit
-s1.probit<-sparsereg((y>5),X,treat,scale.type="TX",type="probit")
-ests.probit<-apply(s1.probit$beta.mode,1,median)
+summary(s1.base)
+plot(s1.base)
+violinplot(s1.base)
+
 }
 
 }
