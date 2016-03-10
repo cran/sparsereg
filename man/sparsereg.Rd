@@ -4,8 +4,8 @@
 \description{Function for fitting a Bayesian LASSOplus model for sparse models with uncertainty, facilitating the discovery of various types of interactions. Function takes a dependent variable, an optional matrix of (pre-treatment) covariates, and a (optional) matrix of categorical treatment variables. Includes correct calculation of uncertainty estimates, including for data with repeated observations.}
 \usage{
 sparsereg(y, X, treat=NULL, EM=FALSE, gibbs=200, burnin=200, thin=10,  
-scale.type="none", baseline.vec=NULL, id=NULL, id2=NULL, id3=NULL, 
-save.temp=FALSE)
+type="linear", scale.type="none", baseline.vec=NULL, 
+id=NULL, id2=NULL, id3=NULL, save.temp=FALSE, conservative=TRUE)
 }
 \arguments{
   \item{y}{Dependent variable.}
@@ -20,6 +20,9 @@ These iterations will not be included in the resulting analysis.
 \item{thin}{
 Extent of thinning of the MCMC chain.  Between each posterior sample, whether burnin or saved, \env{thin} draws are made.
 }
+\item{type}{
+Type of regression model to fit.  Allowed types are linear or probit.
+}
 \item{baseline.vec}{Optional vector with one entry for each column of the treatment matrix.  Each entry gives the baseline condition for that treatment, which then during pre-processing is omitted for estimation so it serves as an excluded category.}
 \item{id, id2, id3}{
 Vectors the same lenght of the sample denoting clustering in the data.  In a conjoint experiment with repeated observations, these correspond with respondent IDs.  Up to three different sets of random effects are allowed.
@@ -31,6 +34,7 @@ Indicates the types of interactions that will be created and used in estimation.
 Note that users can create their own interactions of interest, select \env{scale.type="none"}, to return the sparse version of the user specified model.
 }
 \item{save.temp}{Whether to save intermediate output in a file named \env{temp_sparsereg}.  Useful for very long runs.}
+\item{conservative}{Experimental.  If set to \env{FALSE}, the estimate is less conservative in selecting a variable.}
 }
 \details{
 The function \env{sparsereg} allows for estimation of a broad range of sparse regressions.  The method allows for continuous, binary, and censored outcomes.  In experimental data, it can be used for subgroup analysis.  It pre-processes lower-order terms to generate higher-order interactions terms that are uncorrelated with their lower order component, with pre-processing generated through \env{scale.type}.  In observational data, it can be used in place of a standard regression, especially in the presence of a large number of variables.  The method also adjusts uncertainty estimates when there are repeated observations through using random effects.  For example, a conjoint design may have the same people make several comparisons, or a panel data regression may have multiple observations on the same unit.
@@ -58,17 +62,19 @@ Egami, Naoki and Imai, Kosuke. 2015. "Causal Interaction in High-Dimension."  Wo
 \dontrun{
  set.seed(1)
  n<-500
- k<-2
+ k<-5
  treat<-sample(c("a","b","c"),n,replace=TRUE,pr=c(.5,.25,.25))
- Sigma<-matrix(c(1,.5,.5,1),nr=2)
- X<-mvrnorm(n,m=c(0,0),S=Sigma)
+ treat2<-sample(c("a","b","c","d"),n,replace=TRUE,pr=c(.25,.25,.25,.25))
+ Sigma<-diag(k)
+ Sigma[Sigma==0]<-.5
+ X<-mvrnorm(n,m=rep(0,k),S=Sigma)
  y.true<-3+X[,2]*2+(treat=="a")*2 +(treat=="b")*(-2)+X[,2]*(treat=="b")*(-2)+
-  X[,2]*(treat=="c")*2
- y<-y.true+rnorm(n)
+  X[,2]*(treat2=="c")*2
+ y<-y.true+rnorm(n,sd=2)
 
 ##Fit a linear model.
-s1<-sparsereg(y, X, treat, scale.type="TX")
-s1.EM<-sparsereg(y, X, treat, EM=TRUE, scale.type="TX")
+s1<-sparsereg(y, X, cbind(treat,treat2), scale.type="TX")
+s1.EM<-sparsereg(y, X, cbind(treat,treat2), EM=TRUE, scale.type="TX")
 
 ##Summarize results from MCMC fit
 summary(s1)

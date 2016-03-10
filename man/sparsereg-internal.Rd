@@ -15,6 +15,7 @@
 \alias{make.inter.treat}
 \alias{make.justthreeway}
 \alias{make.threewayinter}
+\alias{make.interXX}
 
 \title{Internal Sparsereg Functions}
 \description{

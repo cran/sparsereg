@@ -1,3 +1,4 @@
 version date      description
 0.1     07/20/15  The first version on CRAN
 0.2     09/30/15  EM added, tobit and probit functionality taken out until EM can extend to them.
+1.2     03/01/16  Probit functionality added.

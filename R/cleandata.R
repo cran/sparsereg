@@ -215,4 +215,39 @@ make.justthreeway<-function(X1,X2,X3){
 }##Close out make.justthreeway
 
 
+make.interXX<-function(X,X2){
+
+	if(length(colnames(X))==0) colnames(X)<-paste("X",1:ncol(X),sep="")
+	if(length(colnames(X2))==0) colnames(X2)<-paste("X2",1:ncol(X),sep="")
+	
+	X<-X[,apply(X,2,sd)>0]
+	n<-nrow(X)
+
+
+	treat.mat<-X2
+	put.vec<-1
+	names.vec<-NULL
+	clust.vec<-NULL
+	for(i.treat in 1:ncol(treat.mat)){
+		for(i.X in 1:ncol(X)){
+		names.vec[put.vec]<-paste(colnames(X)[i.X], colnames(treat.mat)[i.treat], sep=" x ")
+		clust.vec[put.vec]<-i.treat
+		put.vec<-put.vec+1
+		}
+	}
+	
+	names.vec<-gsub(" x int","",names.vec)
+	names.vec<-gsub("int x ","",names.vec)
+
+	X.temp<-matrix(NA,nrow=n, ncol=ncol(treat.mat)*ncol(X))
+
+	big.X<- cbind(X[,apply(X,2,sd)>0], treat.mat, makeinter_cpp("X00"=treat.mat,"X10"=X,"X20" = X.temp)$X)
+	colnames(big.X)<-c(colnames(X[,apply(X,2,sd)>0]),colnames(treat.mat),names.vec)
+	clust.vec<-c(rep(1,ncol(X)),rep(2,ncol(treat.mat)),clust.vec+2)
+return(list("X.big"=big.X,"c.clust"=clust.vec))
+}
+
+
+
+
 

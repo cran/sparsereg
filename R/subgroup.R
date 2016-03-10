@@ -9,12 +9,14 @@
 
 #scale.type: none, expand.treat, expand.X
 
-sparsereg<-function(y, X, treat=NULL, EM=FALSE, gibbs=200, burnin=200, thin=10,  scale.type="none", baseline.vec=NULL, id=NULL, id2=NULL, id3=NULL, save.temp=FALSE){
+sparsereg<-function(y, X, treat=NULL, EM=FALSE, gibbs=200, burnin=200, thin=10,  type="linear",scale.type="none", baseline.vec=NULL, id=NULL, id2=NULL, id3=NULL, save.temp=FALSE, conservative=TRUE){
 
+EM.all<-FALSE
+if(EM) EM.all<-TRUE
 #To be added in later!
-type="linear"
-trunc=NULL 
-lower.trunc=NULL
+#type="linear"
+#trunc=NULL 
+lower.trunc=FALSE
 one.constraint=FALSE
 asymp<-TRUE
 if(EM){
@@ -23,8 +25,9 @@ if(EM){
 }
 	
 	##Warnings
-	if(!scale.type%in%c("none","TX","TTX","TT")) stop("scale.type should be one of none, TX, TTX, or TT")
-	if(!type%in%c("linear","probit","tobit")) stop("type should be one of linear, probit, or tobit")
+	if(!scale.type%in%c("none","TX","TTX","TT","XX")) stop("scale.type should be one of none, TX, TTX, TT, or XX")
+	if(!type%in%c("linear","probit")) stop("type should be one of linear or probit")
+	#if(type==("probit")&EM==TRUE) stop("EM is not currently implemented for a sparse probit regression.\n Please try the Gibbs implementation.")
 	if(sum(!is.finite(y))>0) stop("Please remove missing or infinite values from y")
 	if(sum(!is.finite(X))>0) stop("Please remove missing or infinite values from X")
 	#if(nrow(as.matrix(X))!=length(y)) stop("y and X need to have the same length")
@@ -56,10 +59,16 @@ if(EM)  cat("Step 1 of 3: Formatting Data","\n")
 	X<-X[,apply(X,2,sd)>0]
 	}
 	
+	if(type=="tobit") y0<-y
+	
 	if(type=="probit") {
 	y0<-(y>mean(y))*1
 	y[y0==1]<-dnorm(0)/pnorm(0)
 	y[y0==0]<--dnorm(0)/pnorm(0)
+	
+	
+	probit.int<-0#mean(y)
+	y<-y-probit.int
 	}
 	
 	y<-as.vector(y)
@@ -139,6 +148,12 @@ if(scale.type=="none"){
 			c.cluster<-all.vars$c.clust
 		}
 
+	if(scale.type=="XX"){
+			all.vars<-make.interXX(X,treat)
+			X.big<- all.vars$X
+			c.cluster<-all.vars$c.clust
+		}
+
 
 	drop.cols<-grep(drop.string,colnames(X.big))
 	if(length(drop.cols)>0) X.big<-X.big[,-drop.cols]
@@ -189,19 +204,7 @@ for(i in 1:(ncol(X.big)-1)) for(j in (i+1):ncol(X.big)){
 	
 	scale.y<-sd(y)
 	y<-(y-mean(y))/scale.y
-	if(type=="probit") {
-	scale.y<-1
-	y0<-(y>mean(y))*1
-	y[y0==1]<-dnorm(0)/pnorm(0)
-	y[y0==0]<--dnorm(0)/pnorm(0)
-	}
 
-	if(type=="probit"|type=="tobit"){
-		X.big<-cbind(1,X.big)
-		colnames(X.big)[1]<-"intercept"
-		c.cluster<-c(max(c.cluster)+1,c.cluster)
-		scale.back<-c(1,scale.back)
-	}
 	n.cluster<-length(unique(c.cluster))
 
 
@@ -273,11 +276,16 @@ if(EM) cat("Step 2 of 3: Beginning EM","\n")
 	##Begin gibbs loop
 	for(i.gibbs in 1:(burnin+gibbs)){	
 			if(i.gibbs>1){
-		if(max(abs(beta.conv-beta.curr))<1e-4) break
+		if(EM.all) {
+			if(max(abs(beta.conv-beta.curr))<1e-4) break 
+			} else{
+			EM<-FALSE
+				}
 		beta.conv<-beta.curr
 	}	
 	for(i.thin in 1:thin){#Start thin loop
 	muprime.all<-abs(lambda.all*sqrt(sigma.sq))/abs(beta.curr)
+	muprime.all[is.na(muprime.all)]<-1e6
 	lambda.prime<-lambda.all^2
 	if(!EM) {
 		invTau2<-sapply(1:length(muprime.all), FUN=function(i) rinv.gaussian(1, muprime.all[i], (lambda.prime[i] ) ) )
@@ -290,6 +298,7 @@ if(EM) cat("Step 2 of 3: Beginning EM","\n")
 			#range.tau<-range(rinv.gaussian(100,muprime.all[i.tau],lambda.prime[i.tau]))
 			range.tau[1]<-muprime.all[i.tau]/5#,lambda.prime[i.tau])
 			range.tau[2]<-muprime.all[i.tau]+muprime.all[i.tau]^1.5/lambda.prime[i.tau]^.5*5
+			if(sum(is.na(range.tau))>0) range.tau<-c(100,2000)
 			tau.try<-seq(range.tau[1],range.tau[2],length=500)
 			probs.tau<-dinv.gaussian(tau.try,muprime.all[i.tau],lambda.prime[i.tau])	
 			probs.tau<-probs.tau/sum(probs.tau,na.rm=TRUE)
@@ -297,11 +306,14 @@ if(EM) cat("Step 2 of 3: Beginning EM","\n")
 			}
 		
 		}
+		
+		
 
 
 	up1<-updatebeta_cpp(X0=X.big, y0=as.matrix(y-ran.effect), betacurr0=as.matrix(beta.curr), betamode0=as.matrix(beta.curr.mode), lambdavec0=as.matrix(lambda.all*rel.wts), dtau0=as.matrix(Dtau*rel.wts^2), sigmasq0=as.matrix(sigma.sq),ps_sigmasq0=as.matrix(ps.sigmasq),lambdashrink0=as.matrix(lambda.shrink*rel.wts),
 	k0=as.matrix(1)
 	)
+
 	beta.curr<-up1$beta.mean
 	beta.curr.mode<-up1$beta.mode
 	beta.curr.ci<-up1$beta.ci
@@ -310,8 +322,6 @@ if(EM) cat("Step 2 of 3: Beginning EM","\n")
 		beta.curr.ci<-beta.curr
 	}
 	beta.curr[abs(beta.curr)<1e-10]<-1e-10
-	#df.adj<-max(1, nrow(X.big)-ncol(X.big))
-	#beta.curr.ci<-rnorm(p,up1$beta.ci,up1$var.beta^.5/rgamma(p,df.adj/2,df.adj/2)^.5)
 
 
 ##Calculate approximate confidence interval
@@ -355,6 +365,7 @@ if(i.thin==thin&!EM){
 	si<-(y.temp-ran.effect-fits)/n
 	ki<-1/n
 	df.satter<-sum(si^2)^2/sum(si^4)
+
 	beta.curr.ci<-abs(beta.curr.ci)^.5/rgamma(1,df.satter/2,df.satter/2)^.5
 
 	mean.temp<-up1$beta.ols#beta.curr.mode
@@ -387,12 +398,15 @@ if(i.thin==thin&!EM){
 	##Update sigmas, lambda
 	sigma.sq.shape<-(n-1)/2+p/2+k.raneff/2
 	ps.sigma.sq.shape<-(n^.5-1)/2+p/2+k.raneff/2
+
+	if(conservative==FALSE)
+	ps.sigma.sq.shape<-(n^(.25)-1)/2+p/2+k.raneff/2
 	sigma.sq.scale<-sum((y-fits)^2)/2+ sum(beta.curr^2/(Dtau*rel.wts^2))/2
 
 	sigma.sq<-rinvgamma(1,shape=sigma.sq.shape,scale=sigma.sq.scale)
 
 	ps.sigmasq<-rinvgamma(1,shape=ps.sigma.sq.shape,scale=sigma.sq.scale)
-	
+
 	
 	if(EM){
 		sigma.sq<-sigma.sq.scale/(sigma.sq.shape-1)
@@ -402,22 +416,32 @@ if(i.thin==thin&!EM){
 
 
 	p.adj<-n^.5
+	##Change
+	if(conservative==FALSE)
+	p.adj<-n^(.5-1/8)
+#	p.adj<-n^.75
 	lambda.shrink<-lambda.all
 
 
 	rel.wts<-1
-	grand.lambda<-rgamma(1, shape=p*p.adj+1, rate=sum(Dtau*rel.wts^2)/2+1.78)^.5
+#	grand.lambda<-rgamma(1, shape=p*p.adj+1, rate=sum(Dtau*rel.wts^2)/2+1.78)^.5
+##Adjustment after first draft--!!!
 
 	if(EM) {
+
 		lambda.range<-NULL
-		lambda.range[1]<-qgamma(0.001, shape=p*p.adj+1, rate=sum(Dtau*rel.wts^2)/2+1.78)
-		lambda.range[2]<-qgamma(1-0.001, shape=p*p.adj+1, rate=sum(Dtau*rel.wts^2)/2+1.78)
+		lambda.range[1]<-qgamma(0.001, shape=p*p.adj, rate=sum(Dtau*rel.wts^2)/2+1)
+		lambda.range[2]<-qgamma(1-0.001, shape=p*p.adj, rate=sum(Dtau*rel.wts^2)/2+1)
 		lambda.try<-seq(lambda.range[1],lambda.range[2],length=500)
-		lambda.prob<-dgamma(lambda.try, shape=p*p.adj+1, rate=sum(Dtau*rel.wts^2)/2+1.78)
+		lambda.prob<-dgamma(lambda.try, shape=p*p.adj, rate=sum(Dtau*rel.wts^2)/2+1)
 		lambda.prob[is.na(lambda.prob)]<-0
 		lambda.prob<-lambda.prob/sum(lambda.prob)
 		grand.lambda<-sum(lambda.prob*lambda.try^.5)
-	}
+		#grand.lambda<-p*p.adj/(sum(Dtau*rel.wts^2)/2+1)
+	} else{
+
+		grand.lambda<-rgamma(1, shape=p*p.adj, rate=sum(Dtau*rel.wts^2)/2+1)^.5
+}
 		wts.lam<-NULL
 		#for(i.g in 1:p) wts.lam[i.g]<-rgig(1, .5, 1,abs(beta.curr/sigma.sq^.5)[i.g])
 		#wts.lam<-rgamma(p,p.adj+1/2,(abs(beta.curr)/sqrt(sigma.sq))^.25)
@@ -437,7 +461,7 @@ if(i.thin==thin&!EM){
 			p.al<-p.al/sum(p.al)
 			
 			var.out<-sum(u.try^2*p.al)-(sum(u.try*p.al))^2
-			u.samp<-sample(size=1,u.try,prob=p.al)
+			if(!EM0) u.samp<-sample(size=1,u.try,prob=p.al)
 			if(EM0) u.samp<-sum(p.al*u.try)
 			#print(which(out==u.try)/length(u.try))
 			out<-list("var.out"=var.out,"u.samp"=u.samp)
@@ -448,12 +472,14 @@ if(i.thin==thin&!EM){
 		var.u<-NULL
 			
 		#wts.lam<-sapply(grand.lambda*abs(beta.curr/sigma.sq^.5),u.calc)
+
 		for(i.u in 1:length(beta.curr)) {
 			temp.calc<-u.calc(grand.lambda*abs(beta.curr[i.u]/sigma.sq^.5))
 			wts.lam[i.u]<-temp.calc$u.samp
 			var.u[i.u]<-temp.calc$var.out
 		}
-		#print(wts.lam)
+
+
 		alpha.calc<-function(x){
 			-sum(abs(wts.lam)^x)+2*sum(log(wts.lam))+    p*log(x)-p*lgamma(4/x)-x	}
 		
@@ -465,8 +491,8 @@ if(i.thin==thin&!EM){
 		#print(log.alpha)
 		wt.alpha<-exp(log.alpha)#/sum(exp(log.alpha))
 	
-		alpha0<-sample(size=1,alpha.try,prob=wt.alpha)
-
+	
+		if(!EM) alpha0<-sample(size=1,alpha.try,prob=wt.alpha)
 		if(EM) {
 			wt.alpha<-wt.alpha/sum(wt.alpha)
 			alpha0<-sum(alpha.try*wt.alpha)
@@ -474,10 +500,10 @@ if(i.thin==thin&!EM){
 			#alpha0<-1
 
 		}
-		#print(alpha0)
+		
+
 
 		lambda.shrink<-lambda.all<-rep(grand.lambda,p)*wts.lam
-			
 
 		
 		
@@ -488,23 +514,73 @@ if(i.thin==thin&!EM){
 
 	if(type=="probit"){
 		
+		loss.int<-function(int){
+			(mean(pnorm(fits+int))-mean(y0))^2
+		}
+		
+		
+		probit.int<- optimize(f=loss.int,interval=c(-5,5))$min
+		
 		if(!EM){
-		y[y0==1]<-rtnorm(fits[y0==1],lower=0,upper=Inf)
-		y[y0==0]<-rtnorm(fits[y0==0],lower=-Inf,upper=0)
+		y[y0==1]<-rtnorm(n=sum(y0==1),mean=fits[y0==1]+probit.int,sd=1,lower=0,upper=Inf)
+		y[y0==0]<-rtnorm(n=sum(y0==0),mean=fits[y0==0]+probit.int,sd=1,lower=-Inf,upper=0)
 		}else{
+
+		fits<-fits+probit.int
 		alpha.tn<-0-fits[y0==1]
 		beta.tn<-Inf
-		y[y0==1]<-fits[y0==1]+dnorm(alpha.tn)/(pnorm(beta.tn)-pnorm(alpha.tn))
+		num<-dnorm(beta.tn)-dnorm(alpha.tn)
+		denom<-pnorm(beta.tn)-pnorm(alpha.tn)
+		y[y0==1]<-fits[y0==1]-(num/denom)
+		
 		alpha.tn<--Inf
-		beta.tn<-fits[y0==0]	-0
-		y[y0==0]<-fits[y0==0]-dnorm(beta.tn)/(pnorm(beta.tn)-pnorm(alpha.tn))
+		beta.tn<-fits[y0==0]-0
+		num<-dnorm(beta.tn)-dnorm(alpha.tn)
+		denom<-pnorm(-beta.tn)-pnorm(alpha.tn)
+		y[y0==0]<-fits[y0==0]-(num/denom)
+
+		#probit.int<-mean(y)
+		#y<-y-probit.int
+		#y[fits>10]<-10
+		#y[fits<-10]<- -10
+		#y[!is.finite(y)]<-sign(fits[!is.finite(y)])*20
+
+		
+
+
+		y<-y-mean(y)
+	#print(beta.curr)
 			}
+			sigma.sq<-1
 	}
 	
 	if(type=="tobit"){
+		if(!EM){
 		fits.trunc<-X.big%*%beta.curr
-		if(lower.trunc==TRUE) y[y==trunc]<-rtnorm(sum(y==trunc),lower=-Inf,upper=trunc,mean=fits.trunc[y==trunc],sd=sigma.sq^.5)
-		if(lower.trunc==FALSE) y[y==trunc]<-rtnorm(sum(y==trunc),lower=trunc,upper=Inf,mean=fits.trunc[y==trunc],sd=sigma.sq^.5)
+		if(lower.trunc==TRUE) y[y0==trunc]<-rtnorm(sum(y0==trunc),lower=-Inf,upper=trunc,mean=fits.trunc[y0==trunc],sd=sigma.sq^.5)
+		if(lower.trunc==FALSE) y[y0==trunc]<-rtnorm(sum(y0==trunc),lower=trunc,upper=Inf,mean=fits.trunc[y0==trunc],sd=sigma.sq^.5)
+	y<-(y-mean(y))
+		}
+	if(EM){
+		fits<-X.big%*%beta.curr
+		int.adj<-mean(y[y0>trunc])-mean(y0[y0>trunc])
+		y<-y-int.adj
+		fits<-fits-int.adj
+		#fits<-fits-mean(fits[y0>trunc])+mean(y[y0>trunc])
+	
+		if(lower.trunc==TRUE){
+		alpha.tn<--Inf
+		beta.tn<- -(y[y0==trunc][1]-fits[y0==trunc])/sigma.sq^.5#fits[y0==0]-0
+		num<-dnorm(beta.tn)-dnorm(alpha.tn)
+		denom<-pnorm(-beta.tn)-pnorm(alpha.tn)
+		y[y0==trunc]<-fits[y0==trunc]-(num/denom)
+		#print(y[y0==trunc])
+		}
+		y<-(y-mean(y))
+		fits<-fits-mean(fits)
+		
+	}
+	
 	}
 	}#End thin loop
 	
@@ -545,12 +621,12 @@ if(EM){
 if(EM) cat("Step 3 of 3: Gathering Output")
 if(!EM)	cat("Step 4 of 4: Gathering Output\n")
 	
+	if(type=="probit") scale.y<-1
 
 		for(i.scale in 1:nrow(beta.mean)) {
 			beta.mean[i.scale,]<-beta.mean[i.scale,]/scale.back[i.scale]*scale.y
 			beta.mode[i.scale,]<-beta.mode[i.scale,]/scale.back[i.scale]*scale.y
 			beta.ci[i.scale,]<-beta.ci[i.scale,]/scale.back[i.scale]*scale.y
-
 			}
 			
 

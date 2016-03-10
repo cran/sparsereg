@@ -13,8 +13,9 @@ importFrom(ggplot2, ggplot_gtable, ggplot, geom_errorbar, aes, coord_flip,
 ylab,theme, geom_point, ylim, element_blank, ggtitle, ggplot_build, geom_density,
 stat_density,facet_grid, xlab, xlim)
 importFrom("graphics", "plot")
-importFrom("stats", "cor", "dnorm", "lm", "median", "pnorm", "quantile", "rgamma", "rnorm", "sd", "dgamma", "qgamma")
+importFrom("stats", "cor", "dnorm", "lm", "median", "pnorm", "quantile", "rgamma", "rnorm", "sd", "dgamma", "qgamma", "optimize")
 importFrom(GIGrvg,rgig)
+
 
 
 S3method(summary, sparsereg)

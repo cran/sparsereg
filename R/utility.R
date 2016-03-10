@@ -25,8 +25,9 @@ if(select=="mode") rows.keep<-(point.ests!=0)
 if(select=="all")  rows.keep<-(1:length(point.ests))
 if(is.numeric(select)) rows.keep<-(p.vals>select)
 
-table.init<-cbind(point.ests,quants.out,prob.mat)
-table.out<-as.matrix(table.init[rows.keep,])
+table.init<-as.matrix(cbind(point.ests,quants.out,prob.mat))
+table.out<-as.matrix(table.init[rows.keep,],ncol=6)
+if(sum(rows.keep)==1) table.out<-t(table.out)
 colnames(table.init)<-colnames(table.out)<-c("Posterior Median",paste(round(int.calc[1]*100,2),"%",sep=""),paste(round(int.calc[2]*100,2),"%",sep=""),"Pr(b<0)","Pr(b=0)","Pr(b>0)")
 
 if(order=="all") order.rows<-1:nrow(table.init)
@@ -201,6 +202,7 @@ violinplot<-function(x,columns=NULL,newlabels=NULL,type="mode",stage=NULL){
 	if(type=="ci") m<-input$beta.ci
 
 	if(length(columns)==0) columns<-which(apply(input$beta.mode,2,median)!=0)
+	if(length(columns)==0) stop("No covariates were selected.")
 	num.plot<-name.plot<-m.plot<-as.matrix(m[,columns])
 	if(is.numeric(columns))	colnames.fill<-colnames(m)[columns]
 	if(is.character(columns))	colnames.fill<-colnames(m)[colnames(m)%in%columns]
